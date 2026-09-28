@@ -1,0 +1,14 @@
+const mixed=(value:any)=>String(value??"").split(/([\u0980-\u09ff\u200c\u200d]+)/).filter(Boolean).map(part=>({text:part,font:/[\u0980-\u09ff]/.test(part)?"Bengali":"Latin"}));
+export async function packageRoutinePdf(dashboard:any){
+  if(!dashboard.routines?.length)throw Error("No exam routine is available yet.");
+  const [module,bengali,latin]=await Promise.all([import("pdfmake/build/pdfmake"),fetch("/fonts/NotoSansBengali-Regular.ttf"),fetch("/fonts/Latin-Regular.ttf")]);
+  if(!bengali.ok||!latin.ok)throw Error("PDF fonts are unavailable.");
+  const encode=async(response:Response)=>{const bytes=new Uint8Array(await response.arrayBuffer());let binary="";for(let i=0;i<bytes.length;i+=8192)binary+=String.fromCharCode(...bytes.slice(i,i+8192));return btoa(binary)};
+  const pdf:any=(module as any).default||module;
+  pdf.addVirtualFileSystem({"Bengali.ttf":await encode(bengali),"Latin.ttf":await encode(latin)});
+  pdf.fonts={Latin:{normal:"Latin.ttf",bold:"Latin.ttf",italics:"Latin.ttf",bolditalics:"Latin.ttf"},Bengali:{normal:"Bengali.ttf",bold:"Bengali.ttf",italics:"Bengali.ttf",bolditalics:"Bengali.ttf"}};
+  const when=(value:number)=>new Intl.DateTimeFormat("en-BD",{dateStyle:"medium",timeStyle:"short",timeZone:"Asia/Dhaka"}).format(new Date(value));
+  const body=[ ["#","Examination","Start (BST)","End (BST)","Status"].map(v=>({text:v,bold:true,color:"#fff",fillColor:"#123b4b",margin:[5,7,5,7]})), ...dashboard.routines.map((row:any,index:number)=>[String(index+1),row.exam_title,when(row.start),when(row.end),Date.now()<row.start?"Upcoming":Date.now()<row.end?"Open":"Closed"].map(value=>({text:mixed(value),margin:[5,7,5,7]}))) ];
+  const doc:any={pageSize:"A4",pageMargins:[35,75,35,55],defaultStyle:{font:"Latin",fontSize:9,color:"#173846"},header:()=>({text:"LexVeritas Academy",fontSize:17,bold:true,color:"#123b4b",margin:[35,25,35,0]}),content:[{text:"Exam Batch Routine",fontSize:18,bold:true,margin:[0,0,0,12]},{text:["Package: ",...mixed(dashboard.packageTitle),"\nStudent: ",...mixed(dashboard.profile.name),"\nUniversity: ",...mixed(dashboard.profile.university)],margin:[0,0,0,18]},{table:{headerRows:1,dontBreakRows:true,widths:[24,"*",105,105,56],body},layout:{hLineColor:()=>"#dce6e9",vLineColor:()=>"#dce6e9",fillColor:(row:number)=>row>0&&row%2===0?"#f2f7f8":null}}],footer:(page:number,pages:number)=>({columns:[{text:"LexVeritas Academy · Exam Routine"},{text:`Page ${page} / ${pages}`,alignment:"right"}],fontSize:8,color:"#647a83",margin:[35,15,35,0]})};
+  await new Promise<void>((resolve,reject)=>{try{pdf.createPdf(doc).getBlob((blob:Blob)=>{const url=URL.createObjectURL(blob),link=document.createElement("a");link.href=url;link.download=`LexVeritas-Exam-Routine.pdf`;document.body.appendChild(link);link.click();link.remove();setTimeout(()=>URL.revokeObjectURL(url),60000);resolve()})}catch(error){reject(error)}});
+}
