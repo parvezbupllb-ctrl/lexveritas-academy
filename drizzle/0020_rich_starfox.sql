@@ -1,0 +1,1 @@
+ALTER TABLE `backup_history` ADD `drive_started_at` integer;
